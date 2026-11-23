@@ -20,7 +20,7 @@ objs := kx_mem_rw.o
 all: kx_mem_rw.kpm
 
 kx_mem_rw.kpm: $(objs)
-	$(CC) -r -o $@ $^ -T kx_mem_rw.lds
+	$(CC) -r -o $@ $^
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDE_FLAGS) -c -O2 -o $@ $<
