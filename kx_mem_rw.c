@@ -9,7 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <symbol.h>   // KernelPatch-এর সিম্বল রিজলভার (kallsyms.h নয়)
+#include <kallsyms.h>   // KernelPatch-এর রানটাইম সিম্বল রিজলভার
 
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
@@ -115,12 +115,12 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
 }
 
 static long mem_init(const char *args, const char *event, void *reserved) {
-    // KernelPatch-এ kallsyms_lookup_name নয়, symbol_lookup_name ব্যবহার করতে হবে
-    k_access_process_vm = (void *)symbol_lookup_name("access_process_vm");
-    k_get_task_struct   = (void *)symbol_lookup_name("get_task_struct");
-    k_put_task_struct   = (void *)symbol_lookup_name("put_task_struct");
-    k_rcu_read_lock     = (void *)symbol_lookup_name("rcu_read_lock");
-    k_rcu_read_unlock   = (void *)symbol_lookup_name("rcu_read_unlock");
+    // KernelPatch-এ kallsyms_lookup_name ব্যবহার করতে হবে
+    k_access_process_vm = (void *)kallsyms_lookup_name("access_process_vm");
+    k_get_task_struct   = (void *)kallsyms_lookup_name("get_task_struct");
+    k_put_task_struct   = (void *)kallsyms_lookup_name("put_task_struct");
+    k_rcu_read_lock     = (void *)kallsyms_lookup_name("rcu_read_lock");
+    k_rcu_read_unlock   = (void *)kallsyms_lookup_name("rcu_read_unlock");
 
     if (!k_access_process_vm) {
         pr_err("kx-mem-rw: access_process_vm NOT FOUND!\n");
