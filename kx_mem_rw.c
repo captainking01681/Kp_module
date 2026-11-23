@@ -5,11 +5,13 @@
 #include <linux/printk.h>
 #include <linux/string.h>
 #include <linux/sched.h>
+#include <linux/sched/task.h>
+#include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <linux/kernel.h>      // snprintf-এর জন্য
-#include <linux/sched/task.h>  // put_task_struct-এর জন্য
-// KernelPatch হেডারে FOLL_* ম্যাক্রো না থাকায় নিজে ডিফাইন করা হচ্ছে
+#include <linux/kallsyms.h>   // kallsyms_lookup_name-এর জন্য
+
+// FOLL_* ম্যাক্রো ডিফাইন (যদি KernelPatch হেডারে না থাকে)
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
 #endif
@@ -17,7 +19,7 @@
 #define FOLL_FORCE 0x10
 #endif
 
-// কার্নেল ফাংশন পয়েন্টার ডিক্লেয়ারেশন
+// কার্নেল ফাংশন পয়েন্টার
 static int (*k_access_process_vm)(struct task_struct *tsk, unsigned long addr,
                                   void *buf, int len, unsigned int gup_flags);
 static void (*k_get_task_struct)(struct task_struct *t);
@@ -25,13 +27,7 @@ static void (*k_put_task_struct)(struct task_struct *t);
 static void (*k_rcu_read_lock)(void);
 static void (*k_rcu_read_unlock)(void);
 
-KPM_NAME("kx-mem-rw");
-KPM_VERSION("1.0.0");
-KPM_LICENSE("GPL v2");
-KPM_AUTHOR("Krishu X");
-KPM_DESCRIPTION("KX Memory Read/Write via access_process_vm");
-
-// হেল্পার: হেক্স স্ট্রিং থেকে বাইট অ্যারে পার্স করা
+// হেক্স স্ট্রিং থেকে বাইট অ্যারে পার্স
 static int parse_hex(const char *hex, unsigned char *out, int max_len) {
     int len = 0;
     while (*hex && len < max_len) {
@@ -61,19 +57,24 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     unsigned long addr;
     int ret;
 
-    // কমান্ড ফরম্যাট: "read <pid> <hex_addr> <size>" অথবা "write <pid> <hex_addr> <hex_bytes>"
+    if (!k_access_process_vm) {
+        strncpy(buf, "ERR: access_process_vm not resolved", sizeof(buf));
+        compat_copy_to_user(out_msg, buf, strlen(buf)+1);
+        return -1;
+    }
+
     if (sscanf(args, "%15s %d %lx %x", cmd, &pid, &addr, &size) < 4) {
         strncpy(buf, "ERR: invalid args", sizeof(buf));
         compat_copy_to_user(out_msg, buf, strlen(buf)+1);
         return -1;
     }
 
-    // টার্গেট task_struct নিরাপদে রেফারেন্স করা
     struct task_struct *task;
-    rcu_read_lock();
+    k_rcu_read_lock();
     task = pid_task(find_vpid(pid), PIDTYPE_PID);
-    if (task) get_task_struct(task);
-    rcu_read_unlock();
+    if (task) k_get_task_struct(task);
+    k_rcu_read_unlock();
+
     if (!task) {
         strncpy(buf, "ERR: pid not found", sizeof(buf));
         compat_copy_to_user(out_msg, buf, strlen(buf)+1);
@@ -82,7 +83,7 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
 
     if (strcmp(cmd, "read") == 0 && size > 0 && size <= 128) {
         unsigned char kbuf[128];
-        ret = access_process_vm(task, addr, kbuf, size, FOLL_FORCE);
+        ret = k_access_process_vm(task, addr, kbuf, size, FOLL_FORCE);
         if (ret <= 0) {
             snprintf(buf, sizeof(buf), "ERR: read failed ret=%d", ret);
         } else {
@@ -93,7 +94,6 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
             }
         }
     } else if (strcmp(cmd, "write") == 0) {
-        // args থেকে হেক্স স্ট্রিং বের করা (pid, addr, size এর পরে যা আছে)
         const char *hexstr = args;
         int space = 0;
         while (*hexstr && space < 3) { if (*hexstr == ' ') space++; hexstr++; }
@@ -103,7 +103,7 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
         if (wlen <= 0) {
             strncpy(buf, "ERR: bad hex", sizeof(buf));
         } else {
-            ret = access_process_vm(task, addr, wbuf, wlen, FOLL_FORCE | FOLL_WRITE);
+            ret = k_access_process_vm(task, addr, wbuf, wlen, FOLL_FORCE | FOLL_WRITE);
             if (ret == wlen)
                 snprintf(buf, sizeof(buf), "OK WROTE %d bytes", wlen);
             else
@@ -113,14 +113,33 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
         strncpy(buf, "ERR: unknown cmd", sizeof(buf));
     }
 
-    put_task_struct(task);
+    k_put_task_struct(task);
     compat_copy_to_user(out_msg, buf, strlen(buf)+1);
     return 0;
 }
 
 static long mem_init(const char *args, const char *event, void *reserved) {
-    pr_info("kx-mem-rw: loaded\n");
-    return 0;
+    // ফাংশন পয়েন্টার রিজলভ
+    k_access_process_vm = (void *)kallsyms_lookup_name("access_process_vm");
+    k_get_task_struct   = (void *)kallsyms_lookup_name("get_task_struct");
+    k_put_task_struct   = (void *)kallsyms_lookup_name("put_task_struct");
+    k_rcu_read_lock     = (void *)kallsyms_lookup_name("rcu_read_lock");
+    k_rcu_read_unlock   = (void *)kallsyms_lookup_name("rcu_read_unlock");
+
+    // যদি access_process_vm না পাওয়া যায়, লগ করি কিন্তু -1 রিটার্ন করি না
+    if (!k_access_process_vm) {
+        pr_err("kx-mem-rw: access_process_vm not found! Module loaded but read/write will fail.\n");
+    } else {
+        pr_info("kx-mem-rw: access_process_vm resolved at %p\n", k_access_process_vm);
+    }
+
+    // অন্যান্য ফাংশন চেক (ঐচ্ছিক)
+    if (!k_get_task_struct || !k_put_task_struct || !k_rcu_read_lock || !k_rcu_read_unlock) {
+        pr_warn("kx-mem-rw: some task/rcu functions not resolved. Proceed with caution.\n");
+    }
+
+    pr_info("kx-mem-rw: loaded successfully\n");
+    return 0;  // সবসময় 0 রিটার্ন, যাতে মডিউল লোড হয়
 }
 
 static long mem_exit(void *reserved) {
