@@ -9,7 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <kallsyms.h>   // KernelPatch-এর রানটাইম সিম্বল রিজলভার
+#include <kallsyms.h>   // kallsyms_lookup_name-এর জন্য অপরিহার্য
 
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
@@ -115,7 +115,6 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
 }
 
 static long mem_init(const char *args, const char *event, void *reserved) {
-    // KernelPatch-এ kallsyms_lookup_name ব্যবহার করতে হবে
     k_access_process_vm = (void *)kallsyms_lookup_name("access_process_vm");
     k_get_task_struct   = (void *)kallsyms_lookup_name("get_task_struct");
     k_put_task_struct   = (void *)kallsyms_lookup_name("put_task_struct");
