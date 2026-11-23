@@ -7,6 +7,8 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
+#include <linux/kernel.h>      // snprintf-এর জন্য
+#include <linux/sched/task.h>  // put_task_struct-এর জন্য
 
 KPM_NAME("kx-mem-rw");
 KPM_VERSION("1.0.0");
