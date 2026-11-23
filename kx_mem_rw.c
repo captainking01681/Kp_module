@@ -9,8 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <linux/kallsyms.h>
-
+#include <linux/kallsyms.h>   // kallsyms_lookup_name-এর জন্য অপরিহার্য
 
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
