@@ -9,7 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <kallsyms.h>   // <-- এই হেডারটিই মিসিং ছিল
+#include <ksyms.h>   // kallsyms_lookup_name-এর জন্য সঠিক হেডার
 
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
