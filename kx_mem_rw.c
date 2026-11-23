@@ -9,6 +9,21 @@
 #include <linux/mm.h>
 #include <linux/kernel.h>      // snprintf-এর জন্য
 #include <linux/sched/task.h>  // put_task_struct-এর জন্য
+// KernelPatch হেডারে FOLL_* ম্যাক্রো না থাকায় নিজে ডিফাইন করা হচ্ছে
+#ifndef FOLL_WRITE
+#define FOLL_WRITE 0x01
+#endif
+#ifndef FOLL_FORCE
+#define FOLL_FORCE 0x10
+#endif
+
+// কার্নেল ফাংশন পয়েন্টার ডিক্লেয়ারেশন
+static int (*k_access_process_vm)(struct task_struct *tsk, unsigned long addr,
+                                  void *buf, int len, unsigned int gup_flags);
+static void (*k_get_task_struct)(struct task_struct *t);
+static void (*k_put_task_struct)(struct task_struct *t);
+static void (*k_rcu_read_lock)(void);
+static void (*k_rcu_read_unlock)(void);
 
 KPM_NAME("kx-mem-rw");
 KPM_VERSION("1.0.0");
