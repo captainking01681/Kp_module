@@ -11,6 +11,7 @@
 #include <linux/mm.h>
 #include <symbol.h>   // KernelPatch-এর নিজস্ব সিম্বল রিজলভার
 
+// KernelPatch হেডারে FOLL_* ম্যাক্রো না থাকলে ডিফাইন করা
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
 #endif
@@ -18,12 +19,14 @@
 #define FOLL_FORCE 0x10
 #endif
 
+// কার্নেল ফাংশন পয়েন্টার ডিক্লেয়ারেশন
 static int (*k_access_process_vm)(struct task_struct *tsk, unsigned long addr, void *buf, int len, unsigned int gup_flags);
 static void (*k_get_task_struct)(struct task_struct *t);
 static void (*k_put_task_struct)(struct task_struct *t);
 static void (*k_rcu_read_lock)(void);
 static void (*k_rcu_read_unlock)(void);
 
+// হেক্স স্ট্রিং থেকে বাইট অ্যারে পার্স করার হেল্পার
 static int parse_hex(const char *hex, unsigned char *out, int max_len) {
     int len = 0;
     while (*hex && len < max_len) {
@@ -46,6 +49,7 @@ static int parse_hex(const char *hex, unsigned char *out, int max_len) {
     return len;
 }
 
+// মূল কন্ট্রোল ফাংশন (Read/Write লজিক)
 static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     char buf[256];
     char cmd[16];
@@ -54,11 +58,12 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     int ret;
 
     if (!k_access_process_vm) {
-        strncpy(buf, "ERR: access_process_vm not found", sizeof(buf));
+        strncpy(buf, "ERR: access_process_vm not resolved", sizeof(buf));
         compat_copy_to_user(out_msg, buf, strlen(buf)+1);
         return -1;
     }
 
+    // কমান্ড ফরম্যাট: "read <pid> <hex_addr> <size>" অথবা "write <pid> <hex_addr> <hex_bytes>"
     if (sscanf(args, "%15s %d %lx %x", cmd, &pid, &addr, &size) < 4) {
         strncpy(buf, "ERR: invalid args", sizeof(buf));
         compat_copy_to_user(out_msg, buf, strlen(buf)+1);
@@ -114,8 +119,9 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     return 0;
 }
 
+// মডিউল ইনিশিয়ালাইজেশন
 static long mem_init(const char *args, const char *event, void *reserved) {
-    // symbol_lookup_name ব্যবহার করে ফাংশন পয়েন্টার রিজলভ
+    // symbol_lookup_name দিয়ে ফাংশন পয়েন্টার রিজলভ করা হচ্ছে
     k_access_process_vm = (void *)symbol_lookup_name("access_process_vm");
     k_get_task_struct   = (void *)symbol_lookup_name("get_task_struct");
     k_put_task_struct   = (void *)symbol_lookup_name("put_task_struct");
@@ -123,15 +129,16 @@ static long mem_init(const char *args, const char *event, void *reserved) {
     k_rcu_read_unlock   = (void *)symbol_lookup_name("rcu_read_unlock");
 
     if (!k_access_process_vm) {
-        pr_err("kx-mem-rw: access_process_vm NOT FOUND!\n");
+        pr_err("kx-mem-rw: access_process_vm NOT FOUND in kallsyms!\n");
     } else {
         pr_info("kx-mem-rw: access_process_vm found at %p\n", k_access_process_vm);
     }
 
     pr_info("kx-mem-rw: module initialized successfully\n");
-    return 0;
+    return 0;  // সবসময় 0 রিটার্ন, যাতে load failed -1 না আসে
 }
 
+// মডিউল আনলোড
 static long mem_exit(void *reserved) {
     pr_info("kx-mem-rw: unloaded\n");
     return 0;
