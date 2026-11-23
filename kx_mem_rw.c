@@ -24,11 +24,16 @@ KPM_DESCRIPTION("KX Memory Read/Write via access_process_vm");
 #define FOLL_FORCE 0x10
 #endif
 
+// ফাংশন পয়েন্টার ডিক্লেয়ারেশন
 static int (*k_access_process_vm)(struct task_struct *tsk, unsigned long addr, void *buf, int len, unsigned int gup_flags);
 static void (*k_get_task_struct)(struct task_struct *t);
 static void (*k_put_task_struct)(struct task_struct *t);
 static void (*k_rcu_read_lock)(void);
 static void (*k_rcu_read_unlock)(void);
+
+// pid_task এবং find_vpid এর জন্য নতুন পয়েন্টার
+static struct pid *(*k_find_vpid)(pid_t nr);
+static struct task_struct *(*k_pid_task)(struct pid *pid, enum pid_type type);
 
 static int parse_hex(const char *hex, unsigned char *out, int max_len) {
     int len = 0;
@@ -59,8 +64,8 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     unsigned long addr;
     int ret;
 
-    if (!k_access_process_vm) {
-        strncpy(buf, "ERR: access_process_vm not resolved", sizeof(buf));
+    if (!k_access_process_vm || !k_find_vpid || !k_pid_task) {
+        strncpy(buf, "ERR: required kernel symbols not resolved", sizeof(buf));
         compat_copy_to_user(out_msg, buf, strlen(buf)+1);
         return -1;
     }
@@ -71,11 +76,15 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
         return -1;
     }
 
-    struct task_struct *task;
-    if (k_rcu_read_lock) k_rcu_read_lock();
-    task = pid_task(find_vpid(pid), PIDTYPE_PID);
-    if (task && k_get_task_struct) k_get_task_struct(task);
-    if (k_rcu_read_unlock) k_rcu_read_unlock();
+    struct task_struct *task = NULL;
+    struct pid *target_pid = k_find_vpid(pid);
+    
+    if (target_pid) {
+        if (k_rcu_read_lock) k_rcu_read_lock();
+        task = k_pid_task(target_pid, PIDTYPE_PID);
+        if (task && k_get_task_struct) k_get_task_struct(task);
+        if (k_rcu_read_unlock) k_rcu_read_unlock();
+    }
 
     if (!task) {
         strncpy(buf, "ERR: pid not found", sizeof(buf));
@@ -121,17 +130,20 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
 }
 
 static long mem_init(const char *args, const char *event, void *reserved) {
+    // সব প্রয়োজনীয় ফাংশন পয়েন্টার রিজলভ করা হচ্ছে
     k_access_process_vm = (void *)kallsyms_lookup_name("access_process_vm");
     k_get_task_struct   = (void *)kallsyms_lookup_name("get_task_struct");
     k_put_task_struct   = (void *)kallsyms_lookup_name("put_task_struct");
     k_rcu_read_lock     = (void *)kallsyms_lookup_name("rcu_read_lock");
     k_rcu_read_unlock   = (void *)kallsyms_lookup_name("rcu_read_unlock");
+    
+    // kf_ এরর দূর করতে এদেরকেও ম্যানুয়ালি খোঁজা হচ্ছে
+    k_find_vpid         = (void *)kallsyms_lookup_name("find_vpid");
+    k_pid_task          = (void *)kallsyms_lookup_name("pid_task");
 
-    if (!k_access_process_vm) {
-        pr_err("kx-mem-rw: access_process_vm NOT FOUND in kallsyms!\n");
-    } else {
-        pr_info("kx-mem-rw: access_process_vm found at %p\n", k_access_process_vm);
-    }
+    if (!k_access_process_vm) pr_err("kx-mem-rw: access_process_vm NOT FOUND!\n");
+    if (!k_find_vpid) pr_err("kx-mem-rw: find_vpid NOT FOUND!\n");
+    if (!k_pid_task) pr_err("kx-mem-rw: pid_task NOT FOUND!\n");
 
     pr_info("kx-mem-rw: module initialized successfully\n");
     return 0;
