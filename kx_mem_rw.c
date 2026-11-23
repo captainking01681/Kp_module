@@ -9,9 +9,8 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <linux/kallsyms.h>   // kallsyms_lookup_name-এর জন্য
+#include <linux/kallsyms.h>
 
-// FOLL_* ম্যাক্রো ডিফাইন (যদি KernelPatch হেডারে না থাকে)
 #ifndef FOLL_WRITE
 #define FOLL_WRITE 0x01
 #endif
@@ -19,15 +18,12 @@
 #define FOLL_FORCE 0x10
 #endif
 
-// কার্নেল ফাংশন পয়েন্টার
-static int (*k_access_process_vm)(struct task_struct *tsk, unsigned long addr,
-                                  void *buf, int len, unsigned int gup_flags);
+static int (*k_access_process_vm)(struct task_struct *tsk, unsigned long addr, void *buf, int len, unsigned int gup_flags);
 static void (*k_get_task_struct)(struct task_struct *t);
 static void (*k_put_task_struct)(struct task_struct *t);
 static void (*k_rcu_read_lock)(void);
 static void (*k_rcu_read_unlock)(void);
 
-// হেক্স স্ট্রিং থেকে বাইট অ্যারে পার্স
 static int parse_hex(const char *hex, unsigned char *out, int max_len) {
     int len = 0;
     while (*hex && len < max_len) {
@@ -58,7 +54,7 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     int ret;
 
     if (!k_access_process_vm) {
-        strncpy(buf, "ERR: access_process_vm not resolved", sizeof(buf));
+        strncpy(buf, "ERR: access_process_vm not found", sizeof(buf));
         compat_copy_to_user(out_msg, buf, strlen(buf)+1);
         return -1;
     }
@@ -70,10 +66,10 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
     }
 
     struct task_struct *task;
-    k_rcu_read_lock();
+    if (k_rcu_read_lock) k_rcu_read_lock();
     task = pid_task(find_vpid(pid), PIDTYPE_PID);
-    if (task) k_get_task_struct(task);
-    k_rcu_read_unlock();
+    if (task && k_get_task_struct) k_get_task_struct(task);
+    if (k_rcu_read_unlock) k_rcu_read_unlock();
 
     if (!task) {
         strncpy(buf, "ERR: pid not found", sizeof(buf));
@@ -113,33 +109,26 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
         strncpy(buf, "ERR: unknown cmd", sizeof(buf));
     }
 
-    k_put_task_struct(task);
+    if (k_put_task_struct) k_put_task_struct(task);
     compat_copy_to_user(out_msg, buf, strlen(buf)+1);
     return 0;
 }
 
 static long mem_init(const char *args, const char *event, void *reserved) {
-    // ফাংশন পয়েন্টার রিজলভ
     k_access_process_vm = (void *)kallsyms_lookup_name("access_process_vm");
     k_get_task_struct   = (void *)kallsyms_lookup_name("get_task_struct");
     k_put_task_struct   = (void *)kallsyms_lookup_name("put_task_struct");
     k_rcu_read_lock     = (void *)kallsyms_lookup_name("rcu_read_lock");
     k_rcu_read_unlock   = (void *)kallsyms_lookup_name("rcu_read_unlock");
 
-    // যদি access_process_vm না পাওয়া যায়, লগ করি কিন্তু -1 রিটার্ন করি না
     if (!k_access_process_vm) {
-        pr_err("kx-mem-rw: access_process_vm not found! Module loaded but read/write will fail.\n");
+        pr_err("kx-mem-rw: access_process_vm NOT FOUND in kallsyms!\n");
     } else {
-        pr_info("kx-mem-rw: access_process_vm resolved at %p\n", k_access_process_vm);
+        pr_info("kx-mem-rw: access_process_vm found at %p\n", k_access_process_vm);
     }
 
-    // অন্যান্য ফাংশন চেক (ঐচ্ছিক)
-    if (!k_get_task_struct || !k_put_task_struct || !k_rcu_read_lock || !k_rcu_read_unlock) {
-        pr_warn("kx-mem-rw: some task/rcu functions not resolved. Proceed with caution.\n");
-    }
-
-    pr_info("kx-mem-rw: loaded successfully\n");
-    return 0;  // সবসময় 0 রিটার্ন, যাতে মডিউল লোড হয়
+    pr_info("kx-mem-rw: module initialized successfully\n");
+    return 0;
 }
 
 static long mem_exit(void *reserved) {
