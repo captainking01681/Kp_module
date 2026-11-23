@@ -9,7 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <symbol.h>   // KernelPatch-এর নিজস্ব সিম্বল রিজলভার
+#include <ksyms.h>   // kallsyms_lookup_name-এর জন্য সঠিক হেডার
 
 // KernelPatch হেডারে FOLL_* ম্যাক্রো না থাকলে ডিফাইন করা
 #ifndef FOLL_WRITE
@@ -121,12 +121,12 @@ static long mem_ctl0(const char *args, char *__user out_msg, int outlen) {
 
 // মডিউল ইনিশিয়ালাইজেশন
 static long mem_init(const char *args, const char *event, void *reserved) {
-    // symbol_lookup_name দিয়ে ফাংশন পয়েন্টার রিজলভ করা হচ্ছে
-    k_access_process_vm = (void *)symbol_lookup_name("access_process_vm");
-    k_get_task_struct   = (void *)symbol_lookup_name("get_task_struct");
-    k_put_task_struct   = (void *)symbol_lookup_name("put_task_struct");
-    k_rcu_read_lock     = (void *)symbol_lookup_name("rcu_read_lock");
-    k_rcu_read_unlock   = (void *)symbol_lookup_name("rcu_read_unlock");
+    // kallsyms_lookup_name দিয়ে ফাংশন পয়েন্টার রিজলভ করা হচ্ছে
+    k_access_process_vm = (void *)kallsyms_lookup_name("access_process_vm");
+    k_get_task_struct   = (void *)kallsyms_lookup_name("get_task_struct");
+    k_put_task_struct   = (void *)kallsyms_lookup_name("put_task_struct");
+    k_rcu_read_lock     = (void *)kallsyms_lookup_name("rcu_read_lock");
+    k_rcu_read_unlock   = (void *)kallsyms_lookup_name("rcu_read_unlock");
 
     if (!k_access_process_vm) {
         pr_err("kx-mem-rw: access_process_vm NOT FOUND in kallsyms!\n");
