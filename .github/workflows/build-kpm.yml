@@ -19,43 +19,11 @@ jobs:
 
       - name: Clone KernelPatch headers
         run: |
-          git clone --depth=1 https://github.com/bmax121/KernelPatch.git ../KernelPatch
+          git clone https://github.com/bmax121/KernelPatch.git ${{ github.workspace }}/../KernelPatch
 
       - name: Build KPM
         run: |
-          make TARGET_COMPILE=aarch64-linux-gnu- KP_DIR=../KernelPatch
-
-      - name: Upload KPM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: kx-mem-rw-kpm
-          path: kx_mem_rw.kpm
-          if-no-files-found: errorname: Build KX Memory RW KPM
-
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
-
-jobs:
-  build-kpm:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install AArch64 Linux Toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Clone KernelPatch headers
-        run: |
-          git clone --depth=1 https://github.com/bmax121/KernelPatch.git ../KernelPatch
-
-      - name: Build KPM
-        run: |
-          make TARGET_COMPILE=aarch64-linux-gnu- KP_DIR=../KernelPatch
+          make TARGET_COMPILE=aarch64-linux-gnu- KP_DIR=${{ github.workspace }}/../KernelPatch
 
       - name: Upload KPM artifact
         uses: actions/upload-artifact@v4
