@@ -1,0 +1,35 @@
+name: Build KX Memory RW KPM
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # ম্যানুয়ালি চালানোর জন্য
+
+jobs:
+  build-kpm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install AArch64 bare-metal toolchain
+        run: |
+          curl -Lo arm-gnu-toolchain.tar.xz https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz
+          tar -Jxf arm-gnu-toolchain.tar.xz
+          echo "$(pwd)/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin" >> $GITHUB_PATH
+
+      - name: Clone KernelPatch headers
+        run: |
+          git clone --depth=1 https://github.com/bmax121/KernelPatch.git ../KernelPatch
+
+      - name: Build KPM
+        run: |
+          export TARGET_COMPILE=$(pwd)/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf/bin/aarch64-none-elf-
+          make TARGET_COMPILE=$TARGET_COMPILE KP_DIR=../KernelPatch
+
+      - name: Upload KPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kx-mem-rw-kpm
+          path: kx_mem_rw.kpm
+          if-no-files-found: error
