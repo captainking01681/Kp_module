@@ -9,7 +9,7 @@
 #include <linux/kernel.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <ksyms.h>   // kallsyms_lookup_name-এর জন্য সঠিক হেডার
+#include <kallsyms.h>   // কার্নেল সিম্বল রিজলভ করার সঠিক হেডার
 
 // KernelPatch হেডারে FOLL_* ম্যাক্রো না থাকলে ডিফাইন করা
 #ifndef FOLL_WRITE
