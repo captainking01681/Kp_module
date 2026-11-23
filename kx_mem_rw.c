@@ -7,7 +7,6 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 #include <linux/mm.h>
-#include <linux/highmem.h>
 
 KPM_NAME("kx-mem-rw");
 KPM_VERSION("1.0.0");
